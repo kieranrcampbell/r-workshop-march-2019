@@ -1,0 +1,238 @@
+---
+title: "Using R & Bioconductor to assign cell types to single-cell RNA-seq data"
+output: html_notebook
+author: Kieran R Campbell (kicampbell@bccrc.ca)
+---
+
+# Installation of cellassign
+
+```{r}
+install.packages("tensorflow")
+tensorflow::install_tensorflow()
+
+install.packages("devtools") # If not already installed
+devtools::install_github("Irrationone/cellassign")
+```
+
+
+
+
+```{r}
+suppressPackageStartupMessages({
+  library(scater)
+  library(SingleCellExperiment)
+  library(DropletUtils)
+  library(tidyverse)
+  library(cellassign)
+  library(here)
+})
+```
+
+```{r}
+data_dir <- here("data", "outs", "filtered_gene_bc_matrices", "GRCh38")
+
+print(data_dir)
+
+print(dir(data_dir))
+```
+
+
+
+```{r}
+sce <- read10xCounts(data_dir)
+
+sce
+```
+
+# A brief tour of the `SingleCellExperiment` package
+
+```{r}
+nrow(sce) # Number of rows = genes
+ncol(sce) # Number of columns = cells
+```
+
+```{r}
+sce[, c(1,3,5)] # Subset to cells 1, 3, 5
+```
+
+```{r}
+sce[c(2,4,6), ] # Subset to genes 2, 4, 6 
+```
+
+Rownames = gene names
+
+```{r}
+head(rownames(sce))
+```
+
+colnames = cell names = barcodes (usually)
+
+```{r}
+head(colnames(sce))
+```
+
+
+
+
+Column data (cell specific metadata)
+
+```{r}
+head(colData(sce))
+```
+
+I might want to set the column names to the barcode:
+
+```{r}
+colnames(sce) <- colData(sce)$Barcode
+
+head(colnames(sce))
+```
+
+And I can subset on barcode:
+
+```{r}
+sce[, "AAACCTGCAGTAAGCG-1"]
+```
+
+
+Row data (gene specific metadata)
+
+```{r}
+head(rowData(sce))
+```
+
+```{r}
+reducedDims(sce)
+```
+
+```{r}
+head(sizeFactors(sce))
+```
+
+```{r}
+names(assays(sce))
+```
+
+```{r, eval = FALSE}
+assay(sce, "counts")
+counts(sce)
+```
+
+
+```{r}
+assay(sce, "my_super_strange_assay") <- sin(as.matrix(counts(sce)))
+
+names(assays(sce))
+```
+
+```{r}
+class(assay(sce, "my_super_strange_assay"))
+```
+
+
+# Quality control
+
+```{r}
+rowData(sce)$ensembl_gene_id <- rownames(sce)
+  
+sce <- getBMFeatureAnnos(sce, 
+                         filters = "ensembl_gene_id",
+                         attributes = c("ensembl_gene_id", "hgnc_symbol", "entrezgene",
+                                        "start_position", "end_position", "chromosome_name"),
+                         dataset = "hsapiens_gene_ensembl")
+
+  
+# Calculate size factors
+sce <- scran::computeSumFactors(sce, BPPARAM = MulticoreParam(10))
+
+
+# Compute log normal expression values
+sce <- normalize(sce)
+
+```
+
+```{r}
+names(assays(sce))
+```
+
+```{r}
+head(sizeFactors(sce))
+```
+
+
+```{r}
+sce <- runPCA(sce)
+# sce <- runUMAP(sce)
+```
+
+```{r}
+reducedDims(sce)
+```
+
+
+```{r}
+rownames(sce) <- paste0(rowData(sce)$Symbol, "_", rownames(sce))
+```
+
+
+```{r}
+# Get Mitochondrial genes for QC:
+mt_genes <- which(rowData(sce)$chromosome_name == "MT")
+ribo_genes <- grepl("^RP[LS]", rowData(sce)$Symbol)
+feature_ctrls <- list(mito = rownames(sce)[mt_genes],
+                      ribo = rownames(sce)[ribo_genes])
+
+lapply(feature_ctrls, head)
+```
+
+
+
+# Quality control of single-cell data
+
+```{r}
+sce <- calculateQCMetrics(sce, feature_controls = feature_ctrls)
+```
+
+```{r}
+plotColData(sce, x = "total_features_by_counts", y = "pct_counts_mito")
+```
+
+```{r}
+plotPCA(sce, colour_by = "pct_counts_mito")
+```
+
+
+```{r}
+mito_thresh <- 15
+
+sce_qc <- sce[, sce$pct_counts_mito < mito_thresh]
+
+sce_qc <- calculateQCMetrics(sce_qc, feature_controls = feature_ctrls)
+```
+
+```{r}
+sce_qc <- runPCA(sce_qc)
+sce_qc <- runUMAP(sce_qc)
+```
+
+```{r}
+plotPCA(sce_qc, colour_by = "total_features_by_counts")
+plotUMAP(sce_qc, colour_by = "pct_counts_mito")
+```
+
+```{r}
+plotScater(sce)
+plotScater(sce_qc)
+```
+
+
+```{r}
+plotHighestExprs(sce_qc)
+```
+
+# Reduced dimension plots (PCA, tSNE, UMAP)
+
+```{r}
+plotUMAP(sce, colour_by = "SAA1_ENSG00000173432")
+```
+
