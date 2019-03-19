@@ -94,10 +94,29 @@ sce
 
 # A brief tour of the `SingleCellExperiment` package
 
+Overall idea: think of your count matrix where the **columns are cells** and the **rows are genes**.
+
+So when you see things like `rowData` think `geneData`, and `colData` think `cellData`!
+
+
+
+
+
+## Data dimensions
+
+Getting data dimensions
+
 ```{r}
 nrow(sce) # Number of rows = genes
 ncol(sce) # Number of columns = cells
 ```
+
+```{r}
+print(sce)
+```
+
+
+## Subsetting
 
 ```{r}
 sce[, c(1,3,5)] # Subset to cells 1, 3, 5
@@ -107,13 +126,15 @@ sce[, c(1,3,5)] # Subset to cells 1, 3, 5
 sce[c(2,4,6), ] # Subset to genes 2, 4, 6 
 ```
 
-Rownames = gene names
+## Feature and cell metadata
+
+`rownames` = gene names
 
 ```{r}
 head(rownames(sce))
 ```
 
-colnames = cell names = barcodes (usually)
+`colnames` = cell names = barcodes (sometimes)
 
 ```{r}
 head(colnames(sce))
@@ -143,19 +164,29 @@ sce[, "AAACCTGCAGTAAGCG-1"]
 ```
 
 
+
 Row data (gene specific metadata)
 
 ```{r}
 head(rowData(sce))
 ```
 
+
+`reducedDims` is where our PCA,UMAP,tSNE representations will live - but we haven't made them yet
+
 ```{r}
 reducedDims(sce)
 ```
 
+
+`sizeFactors` is where our cell size factors will live - but we haven't calculated them yet
+
 ```{r}
 head(sizeFactors(sce))
 ```
+
+
+The ability to have multiple `assays` is one of the unique advantages of the SingleCellExperiment approach - I can carry around `counts`, `logcounts`, and any other weird data transformation I might like. Right now we only have raw counts, because that's what we've read in:
 
 ```{r}
 names(assays(sce))
@@ -167,6 +198,8 @@ counts(sce)
 ```
 
 
+I can make my own:
+
 ```{r}
 assay(sce, "my_super_strange_assay") <- sin(as.matrix(counts(sce)))
 
@@ -177,10 +210,33 @@ names(assays(sce))
 class(assay(sce, "my_super_strange_assay"))
 ```
 
+Note the beauty of SingleCellExperiments is that subsetting is consistent: if I want to subset only some cells and genes:
+
+```{r}
+sce_subset <- sce[c(1,3,5), c(2,4,6,8)]
+```
+
+Then everything else is subset too!
+
+```{r}
+print(dim(counts(sce_subset)))
+print(length(sizeFactors(sce_subset)))
+print(dim(rowData(sce_subset)))
+```
+
+So the approach may seem like a lot of work up front to just carry around a count matrix and some metadata, but this sort of consistent subsetting makes it _much_ harder (but still not impossible) to introduce bugs into your analysis.
+
+
 
 # Quality control of scRNA-seq data
 
 ## Getting started
+
+First we do some key things to our data:
+
+1. Get some extra gene data, including the chromosome name
+2. Compute the size factors
+3. Compute normalized log counts 
 
 ```{r}
 rowData(sce)$ensembl_gene_id <- rownames(sce)
@@ -212,19 +268,29 @@ head(sizeFactors(sce))
 
 ```{r}
 sce <- runPCA(sce)
-# sce <- runUMAP(sce)
+sce <- runUMAP(sce)
 ```
 
 ```{r}
 reducedDims(sce)
 ```
 
+Just give me my PCA!
+
+```{r}
+head(reducedDims(sce)[['PCA']])
+```
+
+
+I like to add the symbols to the rownames:
 
 ```{r}
 rownames(sce) <- paste0(rowData(sce)$Symbol, "_", rownames(sce))
 head(rownames(sce))
 ```
 
+
+We next need to work out which genes are mitochondrial and ribosomal as these work well for QC:
 
 ```{r}
 # Get Mitochondrial genes for QC:
@@ -235,6 +301,8 @@ feature_ctrls <- list(mito = rownames(sce)[mt_genes],
 
 lapply(feature_ctrls, head)
 ```
+
+And call the `calcualteQCMetrics` function in scater:
 
 ```{r}
 sce <- calculateQCMetrics(sce, feature_controls = feature_ctrls)
@@ -247,35 +315,40 @@ datatable(head(as.data.frame(colData(sce))))
 
 ## What to look for
 
-
+My personal favourite plot to QC scRNA-seq data:
 
 ```{r}
 plotColData(sce, x = "total_features_by_counts", y = "pct_counts_mito")
 ```
 
+Typically retain cells that have < 10% mitochondrial transcripts and > 1000 features, but this is **dataset dependent** - for example, tumour cells typically have higher metabolic burden, leading to higher % mitochondrial (we typically use 20% as a filter then).
+
 ```{r}
 plotPCA(sce, colour_by = "pct_counts_mito")
 ```
 
+For this going to use a simple threshold of 10% mitochondrial. Importantly, we re-compute the QC metrics, size factors and normalization
 
 ```{r}
-mito_thresh <- 15
+mito_thresh <- 10
 
 sce_qc <- sce[, sce$pct_counts_mito < mito_thresh]
 
-sce_qc <- calculateQCMetrics(sce_qc, feature_controls = feature_ctrls)
-
 sce_qc <- scran::computeSumFactors(sce_qc, BPPARAM = MulticoreParam(10))
+
+sce_qc <- normalize(sce_qc)
+
+sce_qc <- calculateQCMetrics(sce_qc, feature_controls = feature_ctrls)
 ```
 
 ```{r}
 sce_qc <- runPCA(sce_qc)
-# sce_qc <- runUMAP(sce_qc)
+sce_qc <- runUMAP(sce_qc)
 ```
 
 ```{r}
-plotPCA(sce_qc, colour_by = "total_features_by_counts")
-# plotUMAP(sce_qc, colour_by = "pct_counts_mito")
+# plotPCA(sce_qc, colour_by = "total_features_by_counts")
+plotUMAP(sce_qc, colour_by = "pct_counts_mito")
 ```
 
 ```{r}
@@ -288,11 +361,38 @@ plotScater(sce_qc)
 plotHighestExprs(sce_qc)
 ```
 
-## Reduced dimension plots (PCA, tSNE, UMAP)
+## Some useful plotting functions in Scater
+
+### Reduced dimension plots
+
+I can call 
+
+* `plotPCA(sce, colour_by = "x")`
+* `plotUMAP(sce, colour_by = "x")`
+* `plotTSNE(sce, colour_by = "x")`
+
+where `x` is:
+
+* Any column of `colData(sce)` (= the cell specific data) to colour by metadata
+* Any gene name in `rownames(sce)` to colour by expression
 
 ```{r}
 plotPCA(sce, colour_by = "SAA1_ENSG00000173432")
 ```
+
+### Additional plots
+
+```{r}
+plotColData(sce_qc, x = "total_counts", y = "pct_counts_mito")
+```
+
+```{r}
+plotExpression(sce_qc, 
+               x = "total_counts", 
+               features = "GAPDH_GAPDH_ENSG00000111640")
+```
+
+
 
 # Using CellAssign to assign cells
 
