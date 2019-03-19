@@ -1,32 +1,78 @@
 ---
 title: "Using R & Bioconductor to assign cell types to single-cell RNA-seq data"
-output: html_notebook
+output: 
+  html_notebook:
+    toc: true
+    toc_float: true
 author: Kieran R Campbell (kicampbell@bccrc.ca)
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
 ---
+
+# Overview of this tutorial
+
+After going through this tutorial you should be able to:
+
+1. Read 10X single-cell RNA-seq data into `SingleCellExperiment` objects
+2. Know how to navigate `SingleCellExperiment` objects
+3. Basic QC of single-cell RNA-seq data using `scater`
+4. Create low dimensional plots (PCA, UMAP, tSNE)
+5. Assign cells to known cell types using `cellassign`
+
+
+## Resources
+
+* [SingleCellExperiment vignette](https://bioconductor.org/packages/release/bioc/vignettes/SingleCellExperiment/inst/doc/intro.html)
+* [Scater vignette](https://bioconductor.org/packages/devel/bioc/vignettes/scater/inst/doc/vignette-intro.html)
+* [CellAssign R package](https://github.com/irrationone/cellassign)
+* [CellAssign preprint](http://bit.ly/cellassignpreprint)
+* [Hemberg lab scRNA-seq course](https://hemberg-lab.github.io/scRNA.seq.course/index.html)
+* [Orchestrating Single-Cell Analysis with Bioconductor](http://osca.bioconductor.org/)
+
+**This document compiled:** http://kieranrcampbell.github.io/r-workshop-march-2019
+
+## Required packages
+
+```{r}
+suppressPackageStartupMessages({
+  library(scater) # BioConductor
+  library(SingleCellExperiment) # BioConductor
+  library(DropletUtils) # BioConductor
+  library(tidyverse) # CRAN
+  library(here) # CRAN
+  library(DT) # CRAN
+  library(pheatmap) # CRAN
+})
+```
+
+If you need to install any of these, you can do so by:
+
+```{r eval=F}
+install.packages(c("tidyverse", "here", "DT", "pheatmap", "BiocManager"))
+
+BiocManager::install(c("scater", "SingleCellExperiment", "DropletUtils"))
+```
+
+**It is highly recommended you do so before the tutorial as this can take significant time!**
 
 # Installation of cellassign
 
-```{r}
+To install cellassign, we need to install Google's Tensorflow framework. **If this doesn't work in the tutorial - don't worry, you won't need it for 80% of what we cover**.
+
+```{r, eval=F}
 install.packages("tensorflow")
 tensorflow::install_tensorflow()
 
 install.packages("devtools") # If not already installed
 devtools::install_github("Irrationone/cellassign")
+
+library(cellassign)
 ```
 
 
+# Read in 10X scRNA-seq data
 
-
-```{r}
-suppressPackageStartupMessages({
-  library(scater)
-  library(SingleCellExperiment)
-  library(DropletUtils)
-  library(tidyverse)
-  library(cellassign)
-  library(here)
-})
-```
+We're going to use some re-processed data from [Single cell RNA sequencing of human liver reveals distinct intrahepatic macrophage populations](https://www.nature.com/articles/s41467-018-06318-7) (patient 1 specifically). If you git cloned this repository (http://github.com/kieranrcampbell/https://github.com/kieranrcampbell/r-workshop-march-2019) this can be found in the directory `data/outs/filtered_gene_bc_matrices/GRCh38`:
 
 ```{r}
 data_dir <- here("data", "outs", "filtered_gene_bc_matrices", "GRCh38")
@@ -36,7 +82,9 @@ print(data_dir)
 print(dir(data_dir))
 ```
 
+10X data typically has a barcodes file (indicating cell barcodes), a genes file (indicating a mapping between genes and indices) and the actual expression data as **raw counts** in `matrix.mtx`.
 
+We can read these in to a `SingleCellExperiment` object using the `read10xCounts` function
 
 ```{r}
 sce <- read10xCounts(data_dir)
@@ -130,7 +178,9 @@ class(assay(sce, "my_super_strange_assay"))
 ```
 
 
-# Quality control
+# Quality control of scRNA-seq data
+
+## Getting started
 
 ```{r}
 rowData(sce)$ensembl_gene_id <- rownames(sce)
@@ -172,6 +222,7 @@ reducedDims(sce)
 
 ```{r}
 rownames(sce) <- paste0(rowData(sce)$Symbol, "_", rownames(sce))
+head(rownames(sce))
 ```
 
 
@@ -185,13 +236,18 @@ feature_ctrls <- list(mito = rownames(sce)[mt_genes],
 lapply(feature_ctrls, head)
 ```
 
-
-
-# Quality control of single-cell data
-
 ```{r}
 sce <- calculateQCMetrics(sce, feature_controls = feature_ctrls)
 ```
+
+```{r}
+datatable(head(as.data.frame(colData(sce))))
+```
+
+
+## What to look for
+
+
 
 ```{r}
 plotColData(sce, x = "total_features_by_counts", y = "pct_counts_mito")
@@ -208,16 +264,18 @@ mito_thresh <- 15
 sce_qc <- sce[, sce$pct_counts_mito < mito_thresh]
 
 sce_qc <- calculateQCMetrics(sce_qc, feature_controls = feature_ctrls)
+
+sce_qc <- scran::computeSumFactors(sce_qc, BPPARAM = MulticoreParam(10))
 ```
 
 ```{r}
 sce_qc <- runPCA(sce_qc)
-sce_qc <- runUMAP(sce_qc)
+# sce_qc <- runUMAP(sce_qc)
 ```
 
 ```{r}
 plotPCA(sce_qc, colour_by = "total_features_by_counts")
-plotUMAP(sce_qc, colour_by = "pct_counts_mito")
+# plotUMAP(sce_qc, colour_by = "pct_counts_mito")
 ```
 
 ```{r}
@@ -230,9 +288,92 @@ plotScater(sce_qc)
 plotHighestExprs(sce_qc)
 ```
 
-# Reduced dimension plots (PCA, tSNE, UMAP)
+## Reduced dimension plots (PCA, tSNE, UMAP)
 
 ```{r}
-plotUMAP(sce, colour_by = "SAA1_ENSG00000173432")
+plotPCA(sce, colour_by = "SAA1_ENSG00000173432")
 ```
+
+# Using CellAssign to assign cells
+
+
+```{r}
+marker_list <- list(
+  'Cholangiocytes'=c("FXYD2", "KRT7", "TACSTD2", "CLDN10", "KRT19"),
+  'Mature B cells'=c("MS4A1", "IGHD", "LINC00926", "TNFRSF13C", "VPREB3"),
+  'Hepatocytes'=c("TAT-AS1", "APOA5", "ADH4", "CYP2C9", "LEAP2")
+)
+
+liver_marker_list <- list(
+        Hepatocytes = c("ALB", "HAMP", "ARG1", "PCK1", "AFP", "BCHE"), 
+        LSECs = c("CALCRL", "FCGR2B", "VWF"),
+        Cholangiocytes = c("KRT19", "EPCAM", "CLDN4", "CLDN10", "SOX9", "MMP7", "CXCL1", "CFTR", "TFF2", "KRT7", "CD24"), 
+        `Hepatic Stellate Cells` = c("ACTA2", "COL1A1", "COL1A2", "COL3A1", "DCN", "MYL9"),
+        Macrophages = c("CD68", "MARCO", "FCGR3A", "LYZ", "PTPRC"),
+        `ab T cells` = c("CD2", "CD3D", "TRAC", "IL32", "CD3E", "PTPRC"),
+        `gd T cells` = c("NKG7", "FCGR3A", "HOPX", "GNLY", "KLRF1", "CMC1", "CCL3", "PTPRC"),
+        `NK cells` = c("GZMK", "KLRF1", "CCL3", "CMC1", "NKG7", "PTPRC"),
+        `Plasma cells` = c("CD27", "IGHG1", "CD79A", "IGHG2", "PTPRC", "IGKC"),
+        `Mature B cells` = c("MS4A1", "LTB", "CD52", "IGHD", "CD79A", "PTPRC", "IGKC"),
+        `Erythroid cells` = c("HBB", "SLC25A37", "CA1", "ALAS2")
+)
+```
+
+```{r}
+mgi <- marker_list_to_mat(liver_marker_list, include_other = FALSE)
+
+pheatmap(mgi)
+```
+
+```{r}
+marker_in_sce <- match(rownames(mgi), rowData(sce_qc)$Symbol)
+stopifnot(all(!is.na(marker_in_sce)))
+```
+
+
+
+```{r}
+sce_marker <- sce_qc[marker_in_sce, ]
+```
+
+```{r}
+stopifnot(all.equal(rownames(mgi), rowData(sce_marker)$Symbol))
+```
+
+
+
+```{r}
+counts(sce_marker) <- as.matrix(counts(sce_marker))
+
+fit <- cellassign(
+  exprs_obj = sce_marker,
+  marker_gene_info = mgi,
+  s = sizeFactors(sce_qc),
+  shrinkage = TRUE,
+  min_delta = 2,
+  verbose = TRUE
+)
+```
+
+
+
+```{r}
+fit
+```
+
+```{r}
+sce_qc$cell_type <- fit$cell_type
+```
+
+```{r}
+plotPCA(sce_qc, colour_by = "cell_type")
+```
+
+
+```{r}
+pheatmap(as.matrix(logcounts(sce_marker)))
+```
+
+
+
 
