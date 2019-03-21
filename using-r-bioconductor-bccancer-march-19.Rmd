@@ -1,7 +1,7 @@
 ---
 title: "Using R & Bioconductor to assign cell types to single-cell RNA-seq data"
 output: 
-  html_notebook:
+  html_document:
     toc: true
     toc_float: true
 author: Kieran R Campbell (kicampbell@bccrc.ca)
@@ -450,10 +450,6 @@ stopifnot(all.equal(rownames(mgi), rowData(sce_marker)$Symbol))
 ```
 
 We then call `cellassign` passing in the `SingleCellExperiment`, marker info, the size factors we've calculated, as well as various other options:
-
-```{r}
-save.image("~/Desktop/image.rds")
-```
 
 
 ```{r warning = F, message = F}
