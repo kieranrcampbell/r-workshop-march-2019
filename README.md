@@ -27,7 +27,8 @@ git clone https://github.com/kieranrcampbell/r-workshop-march-2019.git
 4. Install cellassign (see section "Installation of cellassign")
 
 
-If you have problems please file a github issue here.
+If you have problems please file a github issue.
 
+# Tutorial materials
 
-The RMarkdown document can be found [here](http://ineedtoupdatethisbeforetheworkshop)
+The RMarkdown document compiled as html can be found [here](http://kieranrcampbell.github.io/r-workshop-march-2019).

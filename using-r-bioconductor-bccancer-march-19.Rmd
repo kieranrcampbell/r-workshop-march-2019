@@ -33,7 +33,7 @@ After going through this tutorial you should be able to:
 
 ## Required packages
 
-```{r}
+```{r cache = FALSE}
 suppressPackageStartupMessages({
   library(scater) # BioConductor
   library(SingleCellExperiment) # BioConductor
@@ -43,6 +43,9 @@ suppressPackageStartupMessages({
   library(DT) # CRAN
   library(pheatmap) # CRAN
 })
+
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = TRUE)
 ```
 
 If you need to install any of these, you can do so by:
@@ -59,14 +62,13 @@ BiocManager::install(c("scater", "SingleCellExperiment", "DropletUtils"))
 
 To install cellassign, we need to install Google's Tensorflow framework. **If this doesn't work in the tutorial - don't worry, you won't need it for 80% of what we cover**.
 
-```{r, eval=F}
-install.packages("tensorflow")
+```{r, eval=T}
+install.packages("tensorflow", repos = "http://cran.us.r-project.org")
 tensorflow::install_tensorflow()
 
-install.packages("devtools") # If not already installed
+install.packages("devtools", repos = "http://cran.us.r-project.org") # If not already installed
 devtools::install_github("Irrationone/cellassign")
 
-library(cellassign)
 ```
 
 
@@ -389,21 +391,24 @@ plotColData(sce_qc, x = "total_counts", y = "pct_counts_mito")
 ```{r}
 plotExpression(sce_qc, 
                x = "total_counts", 
-               features = "GAPDH_GAPDH_ENSG00000111640")
+               features = "GAPDH_ENSG00000111640")
 ```
 
 
 
-# Using CellAssign to assign cells
+# Using CellAssign to assign cells to known types
 
+CellAssign is our new method to assign cells to known cell types. It relies on assuming cell types over-express their own markers, e.g. an epithelial tumour cell should overexpress EPCAM relative to other cell types. 
 
 ```{r}
-marker_list <- list(
-  'Cholangiocytes'=c("FXYD2", "KRT7", "TACSTD2", "CLDN10", "KRT19"),
-  'Mature B cells'=c("MS4A1", "IGHD", "LINC00926", "TNFRSF13C", "VPREB3"),
-  'Hepatocytes'=c("TAT-AS1", "APOA5", "ADH4", "CYP2C9", "LEAP2")
-)
+library(cellassign)
+```
 
+
+
+In this example, the data we have just performed QC and exploratory analysis of is liver cells, that we expect to contain a certain number of cell types. To begin, we specify a list, where each item corresponds to a set of marker genes for a given cell type:
+
+```{r}
 liver_marker_list <- list(
         Hepatocytes = c("ALB", "HAMP", "ARG1", "PCK1", "AFP", "BCHE"), 
         LSECs = c("CALCRL", "FCGR2B", "VWF"),
@@ -419,18 +424,22 @@ liver_marker_list <- list(
 )
 ```
 
-```{r}
+To begin, we use `cellassign`'s `marker_list_to_mat` function to convert this into a (binary) cell type by marker matrix:
+
+```{r, fig.width = 5, fig.height = 10}
 mgi <- marker_list_to_mat(liver_marker_list, include_other = FALSE)
 
 pheatmap(mgi)
 ```
+
+We then make sure all of these markers exist in our SingleCellExperiment:
 
 ```{r}
 marker_in_sce <- match(rownames(mgi), rowData(sce_qc)$Symbol)
 stopifnot(all(!is.na(marker_in_sce)))
 ```
 
-
+And finally we subset `sce` to just the marker genes:
 
 ```{r}
 sce_marker <- sce_qc[marker_in_sce, ]
@@ -440,40 +449,65 @@ sce_marker <- sce_qc[marker_in_sce, ]
 stopifnot(all.equal(rownames(mgi), rowData(sce_marker)$Symbol))
 ```
 
-
+We then call `cellassign` passing in the `SingleCellExperiment`, marker info, the size factors we've calculated, as well as various other options:
 
 ```{r}
+save.image("~/Desktop/image.rds")
+```
+
+
+```{r warning = F, message = F}
 counts(sce_marker) <- as.matrix(counts(sce_marker))
+
+print(dim(sce_marker))
+print(dim(mgi))
 
 fit <- cellassign(
   exprs_obj = sce_marker,
   marker_gene_info = mgi,
   s = sizeFactors(sce_qc),
   shrinkage = TRUE,
+  max_iter_adam = 50,
   min_delta = 2,
   verbose = TRUE
 )
+
 ```
 
 
 
 ```{r}
 fit
+
 ```
+
+
+Add the cell types to the sce:
 
 ```{r}
 sce_qc$cell_type <- fit$cell_type
+
 ```
 
 ```{r}
-plotPCA(sce_qc, colour_by = "cell_type")
+plotUMAP(sce_qc, colour_by = "cell_type")
+
 ```
 
+
+```{r, fig.width = 9, fig.height = 10}
+acol <- data.frame(`cellassign cell type` = sce_qc$cell_type)
+rownames(acol) <- colnames(sce_qc)
+
+pheatmap(as.matrix(logcounts(sce_marker)),
+         annotation_col = acol)
+
+```
 
 ```{r}
-pheatmap(as.matrix(logcounts(sce_marker)))
-```
+pheatmap(fit$mle_params$gamma)
 
+```
 
 
 
