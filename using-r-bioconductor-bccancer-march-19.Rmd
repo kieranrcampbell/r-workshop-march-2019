@@ -74,7 +74,7 @@ devtools::install_github("Irrationone/cellassign")
 
 # Read in 10X scRNA-seq data
 
-We're going to use some re-processed data from [Single cell RNA sequencing of human liver reveals distinct intrahepatic macrophage populations](https://www.nature.com/articles/s41467-018-06318-7) (patient 1 specifically). If you git cloned this repository (http://github.com/kieranrcampbell/https://github.com/kieranrcampbell/r-workshop-march-2019) this can be found in the directory `data/outs/filtered_gene_bc_matrices/GRCh38`:
+We're going to use some re-processed data from [Single cell RNA sequencing of human liver reveals distinct intrahepatic macrophage populations](https://www.nature.com/articles/s41467-018-06318-7) (patient 1 specifically). If you git cloned this repository (https://github.com/kieranrcampbell/r-workshop-march-2019) this can be found in the directory `data/outs/filtered_gene_bc_matrices/GRCh38`:
 
 ```{r}
 data_dir <- here("data", "outs", "filtered_gene_bc_matrices", "GRCh38")
