@@ -53,7 +53,7 @@ If you need to install any of these, you can do so by:
 ```{r eval=F}
 install.packages(c("tidyverse", "here", "DT", "pheatmap", "BiocManager"))
 
-BiocManager::install(c("scater", "SingleCellExperiment", "DropletUtils"))
+BiocManager::install(c("scater", "SingleCellExperiment", "DropletUtils", "biomaRt"))
 ```
 
 **It is highly recommended you do so before the tutorial as this can take significant time!**
